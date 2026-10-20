@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>MizaxEngine ModelC</title>
+<style>
+:root{
+ --bg:#0c0c0d;--panel:#151517;--panel2:#1c1c1f;--line:#2d2d30;
+ --text:#e9e9ec;--dim:#78787f;--accent:#e5303a;
+ --mono:ui-monospace,Menlo,Consolas,"SF Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{
+ margin:0;background:var(--bg);color:var(--text);
+ font-family:-apple-system,"Segoe UI",Roboto,sans-serif;
+ padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+.wrap{max-width:460px;margin:0 auto;padding:22px 16px 60px}
+.top{display:flex;align-items:baseline;gap:9px;margin-bottom:3px}
+.top .dot{width:9px;height:9px;background:var(--accent);flex:none}
+.top h1{font-size:16px;font-weight:700;letter-spacing:.3px;margin:0}
+.sub{color:var(--dim);font-size:12.5px;line-height:1.55;margin:7px 0 20px;padding-left:18px}
+.rail{position:relative;padding-left:34px}
+.rail::before{content:"";position:absolute;left:10px;top:4px;bottom:4px;width:1px;background:var(--line)}
+.step{position:relative;margin-bottom:22px}
+.step:last-child{margin-bottom:0}
+.step .n{
+ position:absolute;left:-34px;top:0;width:21px;height:21px;
+ background:var(--bg);border:1px solid var(--accent);color:var(--accent);
+ display:flex;align-items:center;justify-content:center;font:700 10px var(--mono);
+}
+.step h2{font-size:12.5px;font-weight:600;margin:0 0 10px;color:var(--text)}
+.panel{background:var(--panel);border:1px solid var(--line);padding:13px}
+label{display:block;font:600 10.5px var(--mono);letter-spacing:.3px;color:var(--dim);margin-bottom:6px}
+textarea,input[type=text]{
+ width:100%;background:var(--bg);border:1px solid var(--line);color:var(--text);
+ padding:10px;font:12px var(--mono);outline:none;resize:vertical;
+}
+textarea:focus,input:focus{border-color:var(--accent)}
+.hint{font-size:11px;color:var(--dim);line-height:1.5;margin-top:6px}
+.hint b{color:#b7b7bd}
+.go{
+ width:100%;background:var(--accent);color:#fff;border:0;
+ padding:14px;font-size:13.5px;font-weight:700;letter-spacing:.3px;cursor:pointer;margin-top:22px;
+}
+.go:active{background:#c92931}
+#log{margin-top:14px;font:11.5px/1.7 var(--mono);color:#9a9aa0;white-space:pre-wrap;word-break:break-word}
+#log .ok{color:#4fd672}
+#log .err{color:#ff5f66}
+#log .warn{color:#e9b84f}
+.dl{display:none;margin-top:14px;text-align:center;background:var(--panel2);border:1px solid var(--accent);padding:14px}
+.dl.show{display:block}
+.dl a{color:#fff;font:700 13px var(--mono);text-decoration:none}
+.dl p{color:var(--dim);font-size:11px;margin:6px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+ <div class="top"><span class="dot"></span><h1>MIZAXENGINE MODELC</h1></div>
+ <p class="sub">Convert JSON dari plugin Studio Lite (MizaxEngine-ModelExporter.lua) jadi .rbxmx — semua diproses di browser ini, ga dikirim ke server mana pun.</p>
+
+ <div class="rail">
+  <div class="step">
+   <div class="n">1</div>
+   <h2>Paste JSON</h2>
+   <div class="panel">
+    <label>JSON DARI STUDIO LITE</label>
+    <textarea id="jsonIn" rows="10" placeholder='{"format":"mizax-modelc","items":[...]}'></textarea>
+    <p class="hint">Long-press OutputBox di Studio Lite → Select All → Copy → paste di sini.</p>
+   </div>
+  </div>
+
+  <div class="step">
+   <div class="n">2</div>
+   <h2>Model name</h2>
+   <div class="panel">
+    <label>NAME</label>
+    <input type="text" id="modelName" placeholder="MizaxModel">
+   </div>
+  </div>
+
+  <div class="step">
+   <div class="n">3</div>
+   <h2>Convert</h2>
+   <button class="go" id="goBtn">CONVERT TO .RBXMX</button>
+   <div id="log"></div>
+   <div class="dl" id="dlBox">
+    <a id="dlLink" download="">⬇ Download .rbxmx</a>
+    <p id="dlInfo"></p>
+   </div>
+  </div>
+ </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let refId = 0;
+const nextRef = () => "RBX" + (refId++);
+
+function esc(s){
+ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function n(v){
+ const s = (+(+v).toFixed(6)).toString();
+ return s === "-0" ? "0" : s;
+}
+
+/* satu writer per tipe "t" yang dikirim dari Lua (lihat SCHEMA di
+   MizaxEngine-ModelExporter.lua) — kalau nanti nambah tipe baru di Lua,
+   tambahin writer-nya di sini juga */
+const WRITERS = {
+ cframe: (name, v) => '<CoordinateFrame name="'+name+'">'
+  +'<X>'+n(v[0])+'</X><Y>'+n(v[1])+'</Y><Z>'+n(v[2])+'</Z>'
+  +'<R00>'+n(v[3])+'</R00><R01>'+n(v[4])+'</R01><R02>'+n(v[5])+'</R02>'
+  +'<R10>'+n(v[6])+'</R10><R11>'+n(v[7])+'</R11><R12>'+n(v[8])+'</R12>'
+  +'<R20>'+n(v[9])+'</R20><R21>'+n(v[10])+'</R21><R22>'+n(v[11])+'</R22>'
+  +'</CoordinateFrame>',
+ vector3: (name, v) => '<Vector3 name="'+name+'"><X>'+n(v[0])+'</X><Y>'+n(v[1])+'</Y><Z>'+n(v[2])+'</Z></Vector3>',
+ color3: (name, v) => {
+  const key = name === "Color" ? "Color3uint8" : name;
+  return '<Color3 name="'+key+'"><R>'+n(v[0])+'</R><G>'+n(v[1])+'</G><B>'+n(v[2])+'</B></Color3>';
+ },
+ bool: (name, v) => '<bool name="'+name+'">'+(v?"true":"false")+'</bool>',
+ float: (name, v) => '<float name="'+name+'">'+n(v)+'</float>',
+ string: (name, v) => '<string name="'+esc(name)+'">'+esc(v)+'</string>',
+ /* isi Script/LocalScript/ModuleScript yang di-paste MANUAL lewat
+    Explorer+Properties di plugin (ga bisa dibaca otomatis — lihat
+    catatan di MizaxEngine-ModelExporter.lua) */
+ script: (name, v) => '<ProtectedString name="'+name+'">'+esc(v)+'</ProtectedString>',
+};
+
+function buildItem(node){
+ const ref = nextRef();
+ let out = '<Item class="'+esc(node.class || "Part")+'" referent="'+ref+'"><Properties>';
+ out += '<string name="Name">'+esc(node.name || "Unnamed")+'</string>';
+
+ const props = node.props;
+ if(props && !Array.isArray(props)){
+  for(const key of Object.keys(props)){
+   const entry = props[key];
+   if(!entry || !entry.t) continue;
+   const writer = WRITERS[entry.t];
+   if(writer) out += writer(key, entry.v);
+  }
+ }
+ /* kalau props keluar sebagai [] (array kosong) — itu quirk JSONEncode
+    Roblox buat Lua table kosong, bukan error. Instance tanpa properti
+    yang didukung (misal TextButton) memang wajar begitu. */
+
+ out += '</Properties>';
+ if(Array.isArray(node.children)){
+  node.children.forEach(c => out += buildItem(c));
+ }
+ out += '</Item>';
+ return out;
+}
+
+function buildRbxmx(data, modelName){
+ refId = 0;
+ let out = '<roblox version="4">';
+ out += '<Item class="Model" referent="'+nextRef()+'"><Properties>';
+ out += '<string name="Name">'+esc(modelName || data.root || "MizaxModel")+'</string>';
+ out += '</Properties>';
+ (data.items || []).forEach(it => out += buildItem(it));
+ out += '</Item>';
+ out += '</roblox>';
+ return out;
+}
+
+function log(msg, cls){
+ const line = document.createElement("div");
+ if(cls) line.className = cls;
+ line.textContent = msg;
+ $("log").appendChild(line);
+}
+
+$("goBtn").addEventListener("click", () => {
+ $("log").innerHTML = "";
+ $("dlBox").classList.remove("show");
+
+ const raw = $("jsonIn").value.trim();
+ if(!raw){ log("paste JSON dulu", "err"); return; }
+
+ let data;
+ try{ data = JSON.parse(raw); }
+ catch(e){ log("JSON ga valid: " + e.message, "err"); return; }
+
+ if(!Array.isArray(data.items)){
+  log('JSON ga punya field "items" (array) — pastikan ini hasil asli dari script Lua-nya', "err");
+  return;
+ }
+
+ let itemCount = 0, skipped = [];
+ const countItems = arr => arr.forEach(it => {
+  itemCount++;
+  if(!(it.props && !Array.isArray(it.props) && Object.keys(it.props).length)) skipped.push(it.class + "/" + it.name);
+  if(Array.isArray(it.children)) countItems(it.children);
+ });
+ countItems(data.items);
+
+ const modelName = $("modelName").value.trim() || data.root || "MizaxModel";
+ let xml;
+ try{ xml = buildRbxmx(data, modelName); }
+ catch(e){ log("gagal bangun XML: " + e.message, "err"); return; }
+
+ const blob = new Blob([xml], {type:"application/octet-stream"});
+ const url = URL.createObjectURL(blob);
+ $("dlLink").href = url;
+ $("dlLink").download = modelName.replace(/[^\w\-]+/g, "_") + ".rbxmx";
+ $("dlInfo").textContent = itemCount + " instance dikonversi";
+ $("dlBox").classList.add("show");
+ log("berhasil dikonversi — " + itemCount + " instance", "ok");
+ if(skipped.length){
+  log(skipped.length + " instance tanpa properti didukung (class-nya belum ada di skema): " + skipped.join(", "), "warn");
+ }
+});
+</script>
+</body>
+</html>
